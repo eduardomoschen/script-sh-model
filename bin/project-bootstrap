@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# project-bootstrap - CLI entrypoint.
+#
+# Each subcommand delegates to an existing component. No logic is duplicated.
+
+set -euo pipefail
+
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+PB_ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+if [ -f "$PB_ROOT/VERSION" ]; then
+  PB_VERSION="$(tr -d '[:space:]' < "$PB_ROOT/VERSION")"
+else
+  PB_VERSION="${PROJECT_BOOTSTRAP_VERSION:-v0.1.0}"
+fi
+
+usage() {
+  cat <<'EOF'
+usage: project-bootstrap <command> [args]
+
+commands:
+  dev          configure a Development Host (scripts/setup_dev.sh)
+  prod         configure the Production runtime (scripts/setup_prod.sh)
+  git-remote   configure GitHub SSH + origin (scripts/setup_git_remote.sh)
+  git-deploy   prepare homelab bare repo + hooks (scripts/setup_git_deploy.sh)
+  doctor       report environment status
+  version      print version
+EOF
+}
+
+cmd="${1:-}"
+[ $# -gt 0 ] && shift
+
+case "$cmd" in
+  dev)         exec "$PB_ROOT/scripts/setup_dev.sh" "$@" ;;
+  prod)        exec "$PB_ROOT/scripts/setup_prod.sh" "$@" ;;
+  git-remote)  exec "$PB_ROOT/scripts/setup_git_remote.sh" "$@" ;;
+  git-deploy)  exec "$PB_ROOT/scripts/setup_git_deploy.sh" "$@" ;;
+  doctor)      exec "$PB_ROOT/scripts/doctor.sh" "$@" ;;
+  version)     printf '%s\n' "$PB_VERSION" ;;
+  -h|--help|"") usage; [ -n "$cmd" ] && exit 1 || exit 0 ;;
+  *)           printf 'error: unknown command: %s\n' "$cmd" >&2; usage >&2; exit 1 ;;
+esac
