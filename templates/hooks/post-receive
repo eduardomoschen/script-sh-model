@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# post-receive - canonical deploy for a homelab bare repository.
+#
+# Contract:
+#   - reacts only to refs/heads/<DEPLOY_BRANCH> (default main); other branches
+#     are ignored with exit 0.
+#   - rejects a removed main.
+#   - defends against versioned .env* secrets.
+#   - checks out into APPS_ROOT/DEPLOY_NAME; a local .env.production survives.
+#   - requires readable .env.production, compose.yaml and compose.prod.yaml.
+#   - runs `docker compose config` BEFORE `up`; config failure blocks up.
+
+set -euo pipefail
+
+ZERO="0000000000000000000000000000000000000000"
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HOOK_CONFIG="$HOOK_DIR/config"
+
+DEPLOY_NAME=""
+DEPLOY_USER=""
+DEPLOY_BRANCH="main"
+APPS_ROOT=""
+REPOS_ROOT=""
+HOOKS_ROOT=""
+COMPOSE_BASE="compose.yaml"
+COMPOSE_PROD="compose.prod.yaml"
+
+if [ -f "$HOOK_CONFIG" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%%#*}"
+    case "$line" in
+      DEPLOY_NAME=*)   DEPLOY_NAME="${line#*=}" ;;
+      DEPLOY_USER=*)   DEPLOY_USER="${line#*=}" ;;
+      DEPLOY_BRANCH=*) DEPLOY_BRANCH="${line#*=}" ;;
+      APPS_ROOT=*)     APPS_ROOT="${line#*=}" ;;
+      REPOS_ROOT=*)    REPOS_ROOT="${line#*=}" ;;
+      HOOKS_ROOT=*)    HOOKS_ROOT="${line#*=}" ;;
+      COMPOSE_BASE=*)  COMPOSE_BASE="${line#*=}" ;;
+      COMPOSE_PROD=*)  COMPOSE_PROD="${line#*=}" ;;
+    esac
+  done < "$HOOK_CONFIG"
+fi
+
+APP_DIR="$APPS_ROOT/$DEPLOY_NAME"
+
+is_env_secret() {
+  local base="${1##*/}"
+  case "$base" in
+    .env) return 0 ;;
+    .env.*)
+      case "$base" in
+        *.example) return 1 ;;
+        *)         return 0 ;;
+      esac ;;
+    *) return 1 ;;
+  esac
+}
+
+NEWREV=""
+while read -r oldrev newrev refname; do
+  [ -n "$newrev" ] || continue
+  if [ "$refname" = "refs/heads/$DEPLOY_BRANCH" ]; then
+    NEWREV="$newrev"
+  fi
+done
+
+[ -n "$NEWREV" ] || exit 0
+
+if [ "$NEWREV" = "$ZERO" ]; then
+  echo "error: main was removed; refusing to deploy" >&2
+  exit 1
+fi
+
+# Defense-in-depth: no env secret may be versioned in the deployed revision.
+while IFS= read -r f; do
+  if is_env_secret "$f"; then
+    echo "error: env file is versioned in main: $f" >&2
+    exit 1
+  fi
+done < <(git ls-tree -r --name-only "$NEWREV")
+
+mkdir -p "$APP_DIR"
+git --work-tree="$APP_DIR" checkout -f "$NEWREV" >/dev/null 2>&1
+
+if [ -n "$DEPLOY_USER" ] && [ "$(id -u)" -eq 0 ]; then
+  chown -R "$DEPLOY_USER" "$APP_DIR" 2>/dev/null || true
+fi
+
+if [ ! -r "$APP_DIR/.env.production" ]; then
+  echo "error: .env.production not found or unreadable in $APP_DIR" >&2
+  exit 1
+fi
+if [ ! -f "$APP_DIR/$COMPOSE_BASE" ]; then
+  echo "error: $COMPOSE_BASE not found in $APP_DIR" >&2
+  exit 1
+fi
+if [ ! -f "$APP_DIR/$COMPOSE_PROD" ]; then
+  echo "error: $COMPOSE_PROD not found in $APP_DIR" >&2
+  exit 1
+fi
+
+cd "$APP_DIR"
+
+docker compose --env-file .env.production -f "$COMPOSE_BASE" -f "$COMPOSE_PROD" config --quiet || {
+  echo "error: docker compose config failed" >&2
+  exit 1
+}
+
+docker compose \
+  --env-file .env.production \
+  -f "$COMPOSE_BASE" \
+  -f "$COMPOSE_PROD" \
+  up -d --build --remove-orphans --wait --wait-timeout 120

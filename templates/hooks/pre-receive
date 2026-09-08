@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# pre-receive - canonical push policy for a homelab bare repository.
+#
+# Contract:
+#   - .env.example / backend/.env.example are PERMITTED.
+#   - .env* secrets are BLOCKED in every branch (only names ending in
+#     exactly ".example" are permitted).
+#   - 'main' cannot be deleted.
+#   - Non-main branches are otherwise accepted normally.
+#   - If DEPLOY_USER is configured, updates to main must come from that user.
+#   - If GLOBAL_PRE_RECEIVE is configured and executable, it is chained
+#     (stdin is preserved).
+
+set -euo pipefail
+
+ZERO="0000000000000000000000000000000000000000"
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HOOK_CONFIG="$HOOK_DIR/config"
+
+DEPLOY_USER=""
+GLOBAL_PRE_RECEIVE=""
+
+if [ -f "$HOOK_CONFIG" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%%#*}"
+    case "$line" in
+      DEPLOY_USER=*)       DEPLOY_USER="${line#*=}" ;;
+      GLOBAL_PRE_RECEIVE=*) GLOBAL_PRE_RECEIVE="${line#*=}" ;;
+    esac
+  done < "$HOOK_CONFIG"
+fi
+
+is_env_secret() {
+  local base="${1##*/}"
+  case "$base" in
+    .env) return 0 ;;
+    .env.*)
+      case "$base" in
+        *.example) return 1 ;;
+        *)         return 0 ;;
+      esac ;;
+    *) return 1 ;;
+  esac
+}
+
+# Capture stdin once so it can be replayed to a chained global hook.
+INPUT="$(cat)"
+
+while read -r oldrev newrev refname; do
+  [ -n "$oldrev" ] || continue
+  [ -n "$newrev" ] || continue
+
+  if [ "$refname" = "refs/heads/main" ] && [ "$newrev" = "$ZERO" ]; then
+    echo "error: deletion of 'main' is not allowed" >&2
+    exit 1
+  fi
+
+  if [ "$newrev" = "$ZERO" ]; then
+    continue
+  fi
+
+  if [ -n "$DEPLOY_USER" ] && [ "$refname" = "refs/heads/main" ]; then
+    if [ "$(id -un 2>/dev/null || true)" != "$DEPLOY_USER" ]; then
+      echo "error: main updates must be performed by '$DEPLOY_USER'" >&2
+      exit 1
+    fi
+  fi
+
+  if [ "$oldrev" = "$ZERO" ]; then
+    files="$(git diff-tree --root --no-commit-id --name-only -r "$newrev")"
+  else
+    files="$(git diff-tree --no-commit-id --name-only -r "$oldrev" "$newrev")"
+  fi
+
+  for f in $files; do
+    if is_env_secret "$f"; then
+      echo "error: env file is not allowed in any branch: $f" >&2
+      exit 1
+    fi
+  done
+done <<< "$INPUT"
+
+if [ -n "$GLOBAL_PRE_RECEIVE" ] && [ -x "$GLOBAL_PRE_RECEIVE" ]; then
+  printf '%s\n' "$INPUT" | "$GLOBAL_PRE_RECEIVE" || exit $?
+fi
+
+exit 0
