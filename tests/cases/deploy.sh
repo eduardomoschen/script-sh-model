@@ -195,7 +195,7 @@ test_deploy_016() {
   add_file "feature.txt"
   git -C "$WORK" commit -qm "feature"
   push_repo feature >/dev/null
-  assert_not_contains " up " "$root/docker.log"
+  assert_file_absent "$root/docker.log"
 }
 register "DEPLOY-016" "feature does not trigger deploy" test_deploy_016
 
@@ -224,7 +224,7 @@ test_deploy_019() {
   prep_prod_app "$root"
   local out
   out="$(push_repo main)"
-  assert_not_contains " up " "$root/docker.log"
+  assert_file_absent "$root/docker.log"
   printf '%s' "$out" | grep -qF ".env.production" || { pb_fail "expected .env.production error"; return 1; }
 }
 register "DEPLOY-019" "missing .env.production fails before docker" test_deploy_019
@@ -238,7 +238,7 @@ test_deploy_020() {
   mkdir -p "$APPD"
   printf 'K=1\n' > "$APPD/.env.production"
   push_repo main >/dev/null
-  assert_not_contains " up " "$root/docker.log"
+  assert_file_absent "$root/docker.log"
 }
 register "DEPLOY-020" "missing compose.yaml fails before docker" test_deploy_020
 
@@ -251,7 +251,7 @@ test_deploy_021() {
   mkdir -p "$APPD"
   printf 'K=1\n' > "$APPD/.env.production"
   push_repo main >/dev/null
-  assert_not_contains " up " "$root/docker.log"
+  assert_file_absent "$root/docker.log"
 }
 register "DEPLOY-021" "missing compose.prod.yaml fails before docker" test_deploy_021
 
@@ -276,7 +276,8 @@ test_deploy_023() {
   printf 'K=1\n' > "$APPD/.env.production"
   export PB_FAKE_DOCKER_CONFIG_FAIL=1
   push_repo main >/dev/null
-  assert_not_contains " up " "$root/docker.log"
+  assert_contains " config " "$root/docker.log"
+  assert_file_not_contains " up " "$root/docker.log"
 }
 register "DEPLOY-023" "config failure prevents up" test_deploy_023
 
@@ -349,3 +350,81 @@ EOF
   push_repo main >/dev/null
 }
 register "DEPLOY-029" "effective hooks path is central, not <bare>/hooks" test_deploy_029
+
+test_deploy_branch_001() {
+  local root="$1"
+  export HOMELAB_ROOT="$root/homelab"
+  export HOOKS_ROOT="$root/etc/homelab-git/hooks"
+  export DEPLOY_NAME="demo"
+  export PROJECT_NAME="demo"
+  export DEPLOY_BRANCH="release"
+  export DEPLOY_USER=""
+  mkdir -p "$root/proj"
+  "$PB_PROJECT_ROOT/scripts/setup_git_deploy.sh" --project-dir "$root/proj" >/dev/null 2>&1
+  BARE="$root/homelab/repos/demo.git"
+  assert_eq "refs/heads/release" "$(git --git-dir="$BARE" symbolic-ref HEAD)"
+  make_work "$root" demo-work
+  git -C "$WORK" checkout -q -b release
+  add_file "ok.txt"
+  git -C "$WORK" commit -qm "base"
+  push_repo release >/dev/null
+  if git -C "$WORK" push deploy :release >/dev/null 2>&1; then
+    pb_fail "expected deploy branch deletion to be blocked"; return 1
+  fi
+  git -C "$WORK" checkout -q -b feature
+  git -C "$WORK" push deploy feature >/dev/null 2>&1
+  if ! git -C "$WORK" push deploy :feature >/dev/null 2>&1; then
+    pb_fail "expected non-deploy branch deletion to be allowed"; return 1
+  fi
+}
+register "DEPLOY-BRANCH-001" "pre-receive honors DEPLOY_BRANCH" test_deploy_branch_001
+
+test_filename_001() {
+  local root="$1"
+  deploy_prepare "$root" demo demo
+  make_work "$root" demo-work
+  add_file ".env notes.txt"
+  git -C "$WORK" commit -qm "spacey name"
+  push_repo main >/dev/null
+}
+register "FILENAME-001" "space-containing non-secret filename allowed" test_filename_001
+
+test_filename_002() {
+  local root="$1"
+  deploy_prepare "$root" demo demo
+  make_work "$root" demo-work
+  add_file "dir with space/.env.production"
+  git -C "$WORK" commit -qm "spaced dir secret"
+  if push_repo main >/dev/null; then pb_fail "expected push to be blocked"; return 1; fi
+}
+register "FILENAME-002" "spaced dir .env.production blocked" test_filename_002
+
+test_filename_003() {
+  local root="$1"
+  deploy_prepare "$root" demo demo
+  make_work "$root" demo-work
+  add_file "dir with space/.env.example"
+  git -C "$WORK" commit -qm "spaced dir example"
+  push_repo main >/dev/null
+}
+register "FILENAME-003" "spaced dir .env.example allowed" test_filename_003
+
+test_filename_004() {
+  local root="$1"
+  deploy_prepare "$root" demo demo
+  make_work "$root" demo-work
+  add_file $'sub\ndir/.env.production'
+  git -C "$WORK" commit -qm "newline dir secret"
+  if push_repo main >/dev/null; then pb_fail "expected push to be blocked"; return 1; fi
+}
+register "FILENAME-004" "newline filename .env.production blocked" test_filename_004
+
+test_filename_005() {
+  local root="$1"
+  deploy_prepare "$root" demo demo
+  make_work "$root" demo-work
+  add_file $'sub\ndir/ok.txt'
+  git -C "$WORK" commit -qm "newline dir legit"
+  push_repo main >/dev/null
+}
+register "FILENAME-005" "newline filename with legit basename allowed" test_filename_005

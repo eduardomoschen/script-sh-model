@@ -86,7 +86,8 @@ test_dev_010() {
   export PB_FAKE_DOCKER_CONFIG_FAIL=1
   "$PB_PROJECT_ROOT/scripts/setup_dev.sh" --project-dir "$repo" >/dev/null 2>&1 \
     && { pb_fail "expected setup_dev to fail"; return 1; }
-  assert_not_contains " up " "$root/docker.log"
+  assert_contains " config " "$root/docker.log"
+  assert_file_not_contains " up " "$root/docker.log"
 }
 register "DEV-010" "config failure prevents up" test_dev_010
 

@@ -56,10 +56,18 @@ assert_contains() {
 }
 
 assert_not_contains() {
+  if [ ! -e "$2" ]; then
+    pb_fail "expected file to exist (so its absence cannot pass vacuously): $2"
+    return 1
+  fi
   if grep -qF -- "$1" "$2" 2>/dev/null; then
     pb_fail "expected NOT to find '$1' in $2"
     return 1
   fi
+}
+
+assert_file_not_contains() {
+  assert_not_contains "$1" "$2"
 }
 
 assert_file_exists() {

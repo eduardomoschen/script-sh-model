@@ -19,13 +19,14 @@ HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK_CONFIG="$HOOK_DIR/config"
 
 DEPLOY_USER=""
+DEPLOY_BRANCH="main"
 GLOBAL_PRE_RECEIVE=""
 
 if [ -f "$HOOK_CONFIG" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
-    line="${line%%#*}"
     case "$line" in
-      DEPLOY_USER=*)       DEPLOY_USER="${line#*=}" ;;
+      DEPLOY_USER=*)        DEPLOY_USER="${line#*=}" ;;
+      DEPLOY_BRANCH=*)      DEPLOY_BRANCH="${line#*=}" ;;
       GLOBAL_PRE_RECEIVE=*) GLOBAL_PRE_RECEIVE="${line#*=}" ;;
     esac
   done < "$HOOK_CONFIG"
@@ -47,12 +48,15 @@ is_env_secret() {
 # Capture stdin once so it can be replayed to a chained global hook.
 INPUT="$(cat)"
 
+DIFF_TMP="$(mktemp)" || exit 1
+trap 'rm -f "$DIFF_TMP"' EXIT
+
 while read -r oldrev newrev refname; do
   [ -n "$oldrev" ] || continue
   [ -n "$newrev" ] || continue
 
-  if [ "$refname" = "refs/heads/main" ] && [ "$newrev" = "$ZERO" ]; then
-    echo "error: deletion of 'main' is not allowed" >&2
+  if [ "$refname" = "refs/heads/$DEPLOY_BRANCH" ] && [ "$newrev" = "$ZERO" ]; then
+    echo "error: deletion of '$DEPLOY_BRANCH' is not allowed" >&2
     exit 1
   fi
 
@@ -60,25 +64,25 @@ while read -r oldrev newrev refname; do
     continue
   fi
 
-  if [ -n "$DEPLOY_USER" ] && [ "$refname" = "refs/heads/main" ]; then
+  if [ -n "$DEPLOY_USER" ] && [ "$refname" = "refs/heads/$DEPLOY_BRANCH" ]; then
     if [ "$(id -un 2>/dev/null || true)" != "$DEPLOY_USER" ]; then
-      echo "error: main updates must be performed by '$DEPLOY_USER'" >&2
+      echo "error: $DEPLOY_BRANCH updates must be performed by '$DEPLOY_USER'" >&2
       exit 1
     fi
   fi
 
   if [ "$oldrev" = "$ZERO" ]; then
-    files="$(git diff-tree --root --no-commit-id --name-only -r "$newrev")"
+    git diff-tree --root --no-commit-id --name-only -r -z "$newrev" > "$DIFF_TMP"
   else
-    files="$(git diff-tree --no-commit-id --name-only -r "$oldrev" "$newrev")"
+    git diff-tree --no-commit-id --name-only -r -z "$oldrev" "$newrev" > "$DIFF_TMP"
   fi
 
-  for f in $files; do
+  while IFS= read -r -d '' f; do
     if is_env_secret "$f"; then
-      echo "error: env file is not allowed in any branch: $f" >&2
+      printf 'error: env file is not allowed in any branch: %q\n' "$f" >&2
       exit 1
     fi
-  done
+  done < "$DIFF_TMP"
 done <<< "$INPUT"
 
 if [ -n "$GLOBAL_PRE_RECEIVE" ] && [ -x "$GLOBAL_PRE_RECEIVE" ]; then

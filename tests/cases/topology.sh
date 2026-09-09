@@ -88,7 +88,7 @@ test_topology_006() {
   make_git_project "$root/ryzen/projects" demo
   "$PB_PROJECT_ROOT/scripts/setup_dev.sh" --project-dir "$repo" >/dev/null 2>&1
   assert_contains "--env-file .env.development" "$root/docker.log"
-  assert_not_contains ".env.production" "$root/docker.log"
+  assert_file_not_contains ".env.production" "$root/docker.log"
 }
 register "TOPOLOGY-006" "development uses only .env.development" test_topology_006
 
@@ -100,7 +100,7 @@ test_topology_007() {
   printf 'services: {}\n' > "$repo/compose.prod.yaml"
   "$PB_PROJECT_ROOT/scripts/setup_prod.sh" --project-dir "$repo" >/dev/null 2>&1
   assert_contains "--env-file .env.production" "$root/docker.log"
-  assert_not_contains ".env.development" "$root/docker.log"
+  assert_file_not_contains ".env.development" "$root/docker.log"
 }
 register "TOPOLOGY-007" "production uses only .env.production" test_topology_007
 

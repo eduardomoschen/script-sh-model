@@ -107,3 +107,33 @@ test_install_008() {
   fi
 }
 register "INSTALL-008" "no installer contains or prints secrets" test_install_008
+
+test_install_009() {
+  local root="$1"
+  local want
+  want="$(tr -d '[:space:]' < "$PB_PROJECT_ROOT/VERSION")"
+  "$PB_PROJECT_ROOT/install/install-dev.sh" --prefix "$root/pb" --bin-dir "$root/bin" >/dev/null 2>&1
+  assert_eq "$want" "$(project-bootstrap version)"
+
+  # A fake `cp` that fails only when copying into the transactional staging dir,
+  # simulating a mid-copy failure during the overlay into the live tree.
+  local realcp
+  realcp="$(command -v cp)"
+  cat > "$root/bin/cp" <<EOF
+#!/usr/bin/env bash
+for a in "\$@"; do
+  case "\$a" in
+    *'.project-bootstrap.install.'*) exit 1 ;;
+  esac
+done
+exec '$realcp' "\$@"
+EOF
+  chmod +x "$root/bin/cp"
+
+  if "$PB_PROJECT_ROOT/install/install-dev.sh" \
+    --prefix "$root/pb" --bin-dir "$root/bin" --version v9.9.9 >/dev/null 2>&1; then
+    pb_fail "expected failed upgrade to be rejected"; return 1
+  fi
+  assert_eq "$want" "$(project-bootstrap version)"
+}
+register "INSTALL-009" "failed overlay leaves previous install intact" test_install_009

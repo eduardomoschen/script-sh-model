@@ -31,10 +31,38 @@ pb_stage_and_validate() {
 
 pb_install_overlay() {
   local stage="$1" prefix="$2" bindir="$3"
-  mkdir -p "$prefix" "$bindir"
-  cp -r "$stage"/. "$prefix"/
-  chmod +x "$prefix/bin/project-bootstrap"
-  ln -sf "$prefix/bin/project-bootstrap" "$bindir/project-bootstrap"
+  local parent
+  parent="$(dirname "$prefix")"
+  mkdir -p "$parent" "$bindir" || return 1
+
+  # Stage into a sibling dir of the live prefix (same filesystem) so the final
+  # swap is an atomic rename. A failure at any point leaves the previous
+  # installation untouched.
+  local tmp backup=""
+  tmp="$(mktemp -d "$parent/.project-bootstrap.install.XXXXXX")" || return 1
+
+  cp -r "$stage"/. "$tmp"/ || { rm -rf "$tmp"; return 1; }
+  chmod +x "$tmp/bin/project-bootstrap" || { rm -rf "$tmp"; return 1; }
+
+  # Point the active symlink at the stable path before swapping content into it.
+  ln -sf "$prefix/bin/project-bootstrap" "$bindir/project-bootstrap" || { rm -rf "$tmp"; return 1; }
+
+  if [ -e "$prefix" ]; then
+    backup="$(mktemp -d "$parent/.project-bootstrap.old.XXXXXX")" || { rm -rf "$tmp"; return 1; }
+    rm -rf "$backup"
+    mv "$prefix" "$backup" || { rm -rf "$tmp"; return 1; }
+  fi
+
+  if ! mv "$tmp" "$prefix"; then
+    if [ -n "$backup" ]; then
+      mv "$backup" "$prefix" 2>/dev/null || true
+    fi
+    rm -rf "$tmp"
+    return 1
+  fi
+
+  [ -n "$backup" ] && rm -rf "$backup"
+  return 0
 }
 
 # Fail early if we cannot write to a target location (walks up to first existing dir).

@@ -68,17 +68,22 @@ done
 [ -n "$NEWREV" ] || exit 0
 
 if [ "$NEWREV" = "$ZERO" ]; then
-  echo "error: main was removed; refusing to deploy" >&2
+  echo "error: $DEPLOY_BRANCH was removed; refusing to deploy" >&2
   exit 1
 fi
 
 # Defense-in-depth: no env secret may be versioned in the deployed revision.
-while IFS= read -r f; do
+TREE_TMP="$(mktemp)" || exit 1
+trap 'rm -f "$TREE_TMP"' EXIT
+git ls-tree -r -z --name-only "$NEWREV" > "$TREE_TMP"
+while IFS= read -r -d '' f; do
   if is_env_secret "$f"; then
-    echo "error: env file is versioned in main: $f" >&2
+    printf 'error: env file is versioned in %s: %q\n' "$DEPLOY_BRANCH" "$f" >&2
     exit 1
   fi
-done < <(git ls-tree -r --name-only "$NEWREV")
+done < "$TREE_TMP"
+rm -f "$TREE_TMP"
+trap - EXIT
 
 mkdir -p "$APP_DIR"
 git --work-tree="$APP_DIR" checkout -f "$NEWREV" >/dev/null 2>&1

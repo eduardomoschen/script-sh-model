@@ -43,7 +43,7 @@ test_prod_004() {
   printf 'services: {}\n' > "$repo/compose.yaml"
   printf 'services: {}\n' > "$repo/compose.prod.yaml"
   "$PB_PROJECT_ROOT/scripts/setup_prod.sh" --project-dir "$repo" >/dev/null 2>&1
-  assert_not_contains "--env-file .env " "$root/docker.log"
+  assert_file_not_contains "--env-file .env " "$root/docker.log"
   assert_file_absent "$repo/.env"
 }
 register "PROD-004" "never uses .env" test_prod_004
@@ -55,7 +55,7 @@ test_prod_005() {
   printf 'services: {}\n' > "$repo/compose.yaml"
   printf 'services: {}\n' > "$repo/compose.prod.yaml"
   "$PB_PROJECT_ROOT/scripts/setup_prod.sh" --project-dir "$repo" >/dev/null 2>&1
-  assert_not_contains "--env-file .env.prod " "$root/docker.log"
+  assert_file_not_contains "--env-file .env.prod " "$root/docker.log"
   assert_file_absent "$repo/.env.prod"
 }
 register "PROD-005" "never uses .env.prod" test_prod_005
@@ -96,7 +96,8 @@ test_prod_008() {
   export PB_FAKE_DOCKER_CONFIG_FAIL=1
   "$PB_PROJECT_ROOT/scripts/setup_prod.sh" --project-dir "$repo" >/dev/null 2>&1 \
     && { pb_fail "expected setup_prod to fail"; return 1; }
-  assert_not_contains " up " "$root/docker.log"
+  assert_contains " config " "$root/docker.log"
+  assert_file_not_contains " up " "$root/docker.log"
 }
 register "PROD-008" "config failure prevents up" test_prod_008
 

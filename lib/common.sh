@@ -42,11 +42,21 @@ pb_load_config() {
   [ -f "$file" ] || return 0
   local line key val
   while IFS= read -r line || [ -n "$line" ]; do
-    line="${line%%#*}"
+    # Full-line comments: optional leading whitespace followed by '#'.
+    case "$line" in
+      [[:space:]]*'#'*) continue ;;
+      '#'*) continue ;;
+    esac
     [ -n "$line" ] || continue
     key="${line%%=*}"
-    [ -n "$key" ] || continue
+    [ "$key" = "$line" ] && { pb_warn "ignoring malformed config line (no '='): $line"; continue; }
     key="$(pb_trim "$key")"
+    # Key must be a plain identifier; otherwise it can never match an allowlisted
+    # key and would risk accidental glob matching or indirect-expansion tricks.
+    if [[ ! "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      pb_warn "ignoring invalid config key: $key"
+      continue
+    fi
     val="${line#*=}"
     case " $PB_CONF_ALLOWED_KEYS " in
       *" $key "*)

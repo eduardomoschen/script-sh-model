@@ -85,3 +85,27 @@ test_sec_010() {
   assert_file_exists "$base/.env.development"
 }
 register "SEC-010" "paths with spaces do not break" test_sec_010
+
+test_sec_011() {
+  local root="$1"
+  local scratch="$root/assert_scratch"
+  : > "$scratch"
+
+  # Missing file must NOT pass vacuously.
+  if ( FAIL_FILE="$scratch"; assert_file_not_contains "up" "$root/missing.log" ) 2>/dev/null; then
+    pb_fail "assert_file_not_contains passed on a missing file"; return 1
+  fi
+
+  # Matching content must fail.
+  printf 'up ran\n' > "$root/ran.log"
+  if ( FAIL_FILE="$scratch"; assert_file_not_contains "up" "$root/ran.log" ) 2>/dev/null; then
+    pb_fail "assert_file_not_contains passed on matching content"; return 1
+  fi
+
+  # Existing clean file must pass.
+  : > "$scratch"
+  printf 'config only\n' > "$root/clean.log"
+  ( FAIL_FILE="$scratch"; assert_file_not_contains "up" "$root/clean.log" ) 2>/dev/null
+  [ ! -s "$scratch" ] || { pb_fail "assert_file_not_contains failed on a clean file"; return 1; }
+}
+register "SEC-011" "assert_file_not_contains requires an existing file" test_sec_011
