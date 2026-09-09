@@ -21,19 +21,29 @@ machine name is a requirement of the tool.
 
 ## 1. Install the tool
 
-Development Host:
+Development Host (user-space, no root):
 
 ```sh
-./install/install-dev.sh
+curl -fsSL \
+  https://raw.githubusercontent.com/eduardomoschen/script-sh-model/v0.2.0/install/bootstrap-dev.sh \
+  | bash
 ```
 
 Production Host (inspect the script first, then run privileged):
 
 ```sh
-curl -fsSL <url>/install-prod.sh -o /tmp/project-bootstrap-install-prod.sh
-# inspect /tmp/project-bootstrap-install-prod.sh
-sudo bash /tmp/project-bootstrap-install-prod.sh
+curl -fsSL \
+  https://raw.githubusercontent.com/eduardomoschen/script-sh-model/v0.2.0/install/bootstrap-prod.sh \
+  -o /tmp/project-bootstrap-install.sh
+
+less /tmp/project-bootstrap-install.sh
+sudo bash /tmp/project-bootstrap-install.sh
 ```
+
+The `bootstrap-*.sh` scripts download a versioned release and delegate to the
+source's `install/install-*.sh`. The repository and version are overridable via
+`PROJECT_BOOTSTRAP_REPOSITORY` and `PROJECT_BOOTSTRAP_VERSION`, and the selected
+version determines exactly which code is downloaded (never merely rewritten).
 
 Installing the tool and configuring a project are distinct operations.
 

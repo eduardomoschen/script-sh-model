@@ -11,7 +11,7 @@ PB_ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
 if [ -f "$PB_ROOT/VERSION" ]; then
   PB_VERSION="$(tr -d '[:space:]' < "$PB_ROOT/VERSION")"
 else
-  PB_VERSION="${PROJECT_BOOTSTRAP_VERSION:-v0.1.0}"
+  PB_VERSION="${PROJECT_BOOTSTRAP_VERSION:-v0.2.0}"
 fi
 
 usage() {

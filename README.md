@@ -33,6 +33,47 @@ project-bootstrap version
 The CLI delegates to the scripts above. See `SETUP.md` for the operational
 workflow and `install/` for the installers.
 
+## Installing via curl
+
+`curl` installs the **tool** (the `project-bootstrap` command). It does **not**
+configure a project automatically.
+
+Development Host (user-space, no root):
+
+```sh
+curl -fsSL \
+  https://raw.githubusercontent.com/eduardomoschen/script-sh-model/v0.2.0/install/bootstrap-dev.sh \
+  | bash
+```
+
+Production Host (inspect first, then run privileged):
+
+```sh
+curl -fsSL \
+  https://raw.githubusercontent.com/eduardomoschen/script-sh-model/v0.2.0/install/bootstrap-prod.sh \
+  -o /tmp/project-bootstrap-install.sh
+
+less /tmp/project-bootstrap-install.sh
+sudo bash /tmp/project-bootstrap-install.sh
+```
+
+The `bootstrap-*.sh` scripts are standalone remote entrypoints: they download a
+versioned release (`PROJECT_BOOTSTRAP_REPOSITORY` / `PROJECT_BOOTSTRAP_VERSION`,
+overridable by environment) and delegate to the source's own `install/install-*.sh`.
+After installing, configure a project with:
+
+```sh
+project-bootstrap dev
+project-bootstrap git-remote
+```
+
+or:
+
+```sh
+project-bootstrap prod
+sudo project-bootstrap git-deploy
+```
+
 ## Tests
 
 ```

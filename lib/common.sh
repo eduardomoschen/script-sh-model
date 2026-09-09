@@ -18,7 +18,7 @@ PB_HOOKS_TEMPLATE_DIR="$PB_TEMPLATES_DIR/hooks"
 if [ -f "$PB_ROOT/VERSION" ]; then
   PB_VERSION="$(tr -d '[:space:]' < "$PB_ROOT/VERSION")"
 else
-  PB_VERSION="${PROJECT_BOOTSTRAP_VERSION:-v0.1.0}"
+  PB_VERSION="${PROJECT_BOOTSTRAP_VERSION:-v0.2.0}"
 fi
 
 # Allowlist for .project-bootstrap.conf keys. Anything else is ignored with a warning.

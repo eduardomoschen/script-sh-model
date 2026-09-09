@@ -36,8 +36,9 @@ STAGE="$(pb_stage_and_validate "$SOURCE_DIR")" \
   || die "invalid source ($SOURCE_DIR); nothing installed"
 trap 'rm -rf "$STAGE"' EXIT
 
-if [ -n "$PIN_VERSION" ]; then
-  printf '%s\n' "$PIN_VERSION" > "$STAGE/VERSION"
+SOURCE_VERSION="$(tr -d '[:space:]' < "$STAGE/VERSION")"
+if [ -n "$PIN_VERSION" ] && [ "$PIN_VERSION" != "$SOURCE_VERSION" ]; then
+  die "requested version $PIN_VERSION does not match source version $SOURCE_VERSION"
 fi
 
 pb_install_overlay "$STAGE" "$PREFIX" "$BIN_DIR"

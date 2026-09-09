@@ -131,7 +131,7 @@ EOF
   chmod +x "$root/bin/cp"
 
   if "$PB_PROJECT_ROOT/install/install-dev.sh" \
-    --prefix "$root/pb" --bin-dir "$root/bin" --version v9.9.9 >/dev/null 2>&1; then
+    --prefix "$root/pb" --bin-dir "$root/bin" --version "$want" >/dev/null 2>&1; then
     pb_fail "expected failed upgrade to be rejected"; return 1
   fi
   assert_eq "$want" "$(project-bootstrap version)"
